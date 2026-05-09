@@ -17,7 +17,8 @@ if (!existsSync(OUTPUT_DIR)) mkdirSync(OUTPUT_DIR);
 
 // POST /export  { path: "/path/to/repo" }
 app.post('/export', (req, res) => {
-  const { path: repoPath } = req.body;
+  // Trim whitespace and surrounding quotes (Windows "Copy as Path" wraps in double quotes)
+  const repoPath = req.body.path?.trim().replace(/^["']+|["']+$/g, '').replace(/\\/g, '/');
 
   if (!repoPath) {
     return res.status(400).json({ error: 'No path provided' });
@@ -35,15 +36,18 @@ app.post('/export', (req, res) => {
   }
 
   try {
-    // Get all commits with parent info
+    // Use a safe delimiter-based format instead of JSON templates to avoid shell quoting issues.
+    // Each commit is one line: HASH|SHORTHASH|TIMESTAMP|PARENTS|AUTHOR|EMAIL|MESSAGE
+    // Message is last so any pipe chars in it don't break earlier fields.
+    const SEP = '\x1f'; // ASCII unit separator — never appears in git output
     const logOutput = execSync(
-      'git log --all --pretty=format:\'{"hash":"%H","shortHash":"%h","message":"%s","author":"%an","email":"%ae","timestamp":%ct,"parents":"%P"}\' ',
+      `git log --all --pretty=format:"%H${SEP}%h${SEP}%ct${SEP}%P${SEP}%an${SEP}%ae${SEP}%s"`,
       { cwd: repoPath, stdio: 'pipe' }
     ).toString().trim();
 
-    // Get branch/ref info
+    // Get branch/ref info using safe delimiters too
     const refsOutput = execSync(
-      'git for-each-ref --format=\'{"name":"%(refname:short)","hash":"%(objectname)","type":"%(refname)"}\' refs/heads refs/remotes refs/tags',
+      `git for-each-ref --format="%(refname:short)${SEP}%(objectname)${SEP}%(refname)" refs/heads refs/remotes refs/tags`,
       { cwd: repoPath, stdio: 'pipe' }
     ).toString().trim();
 
@@ -52,16 +56,26 @@ app.post('/export', (req, res) => {
       .split('\n')
       .filter(Boolean)
       .map(line => {
-        const commit = JSON.parse(line);
-        commit.parents = commit.parents ? commit.parents.split(' ').filter(Boolean) : [];
-        return commit;
+        const [hash, shortHash, timestamp, parentsRaw, author, email, ...msgParts] = line.split(SEP);
+        return {
+          hash,
+          shortHash,
+          timestamp: parseInt(timestamp, 10),
+          parents: parentsRaw ? parentsRaw.split(' ').filter(Boolean) : [],
+          author,
+          email,
+          message: msgParts.join(SEP), // rejoin in case message contained SEP (extremely unlikely but safe)
+        };
       });
 
     // Parse refs
     const refs = refsOutput
       .split('\n')
       .filter(Boolean)
-      .map(line => JSON.parse(line));
+      .map(line => {
+        const [name, hash, type] = line.split(SEP);
+        return { name, hash, type };
+      });
 
     // Tag each commit with its branch names
     const hashToRefs = {};
