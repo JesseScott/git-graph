@@ -3,17 +3,30 @@
  *
  * Layout strategy:
  *   - Z axis: time (newest = z:0, oldest = most negative z)
- *   - X axis: branch lanes, computed by tracing the parent graph from branch tips
+ *   - X axis: branch lanes, alternating left/right from centre for equilateral feel
  *
  * Lane assignment:
  *   1. Start from branch tip commits (those with refs, or merge targets)
  *   2. Walk each branch backwards through parents, assigning a lane
  *   3. When a commit already has a lane (shared history), stop walking that path
  *   4. Commits with no lane after the walk get lane 0
+ *
+ * X positions alternate: 0, -1, +1, -2, +2, -3, +3 ...
+ * so branches fan out symmetrically rather than all stacking to one side.
  */
 
-const LANE_SPACING = 3;
+const LANE_SPACING = 1.4; // tighter than before
 const Z_SPACING = 2.5;
+
+/** Convert a lane index to an alternating X offset.
+ *  lane 0 → 0, 1 → -1, 2 → +1, 3 → -2, 4 → +2, ...
+ */
+function laneToX(lane) {
+  if (lane === 0) return 0;
+  const side = lane % 2 === 0 ? 1 : -1;   // even = right, odd = left
+  const dist = Math.ceil(lane / 2);
+  return side * dist;
+}
 
 export function layoutCommits(commits) {
   if (!commits || commits.length === 0) return [];
@@ -80,19 +93,17 @@ export function layoutCommits(commits) {
     if (laneMap[c.hash] === undefined) laneMap[c.hash] = 0;
   });
 
-  const maxLane = Math.max(...Object.values(laneMap), 0);
-  const laneOffset = maxLane / 2;
-
-  return sorted.map(commit => ({
-    ...commit,
-    lane: laneMap[commit.hash] ?? 0,
-    zIndex: zIndexMap[commit.hash],
-    position: [
-      ((laneMap[commit.hash] ?? 0) - laneOffset) * LANE_SPACING,
-      0,
-      -zIndexMap[commit.hash] * Z_SPACING,
-    ],
-  }));
+  return sorted.map(commit => {
+    const lane = laneMap[commit.hash] ?? 0;
+    const x = laneToX(lane) * LANE_SPACING;
+    const z = -zIndexMap[commit.hash] * Z_SPACING;
+    return {
+      ...commit,
+      lane,
+      zIndex: zIndexMap[commit.hash],
+      position: [x, 0, z],
+    };
+  });
 }
 
 export function buildEdges(positionedCommits) {

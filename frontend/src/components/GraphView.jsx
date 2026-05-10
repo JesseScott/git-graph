@@ -157,12 +157,13 @@ function KeyHUD({ orbitMode, currentIndex, total }) {
 // ── Main graph view ───────────────────────────────────────────────────────────
 export default function GraphView({ data, onBack }) {
   const [selected, setSelected] = useState(null);
+  const [facing, setFacing] = useState('oldest'); // 'oldest' = walking forward through time
   const orbitRef = useRef();
 
   const positioned = useMemo(() => layoutCommits(data.commits), [data.commits]);
   const edges = useMemo(() => buildEdges(positioned), [positioned]);
 
-  const { currentIndex, orbitMode, setCurrentIndex, setOrbitMode } = useKeyboardNav(positioned);
+  const { currentIndex, orbitMode, setCurrentIndex, setOrbitMode } = useKeyboardNav(positioned, null, facing);
   const currentCommit = positioned[currentIndex];
 
   function handleNodeClick(commit) {
@@ -175,7 +176,7 @@ export default function GraphView({ data, onBack }) {
     <div style={{ width: '100%', height: '100%', position: 'relative', background: '#080c10' }}>
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
-        display: 'flex', alignItems: 'center', gap: 16,
+        display: 'flex', alignItems: 'center', gap: 16, overflow: 'hidden',
         padding: '14px 20px',
         background: 'rgba(8,12,16,0.8)', backdropFilter: 'blur(8px)',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -196,15 +197,35 @@ export default function GraphView({ data, onBack }) {
         {currentCommit && (
           <span style={{
             marginLeft: 8, fontSize: 11, color: 'rgba(255,255,255,0.35)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            flex: 1, minWidth: 0,
           }}>
             {currentCommit.shortHash} — {currentCommit.message}
           </span>
         )}
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          {[
+            { label: '⟪ oldest', value: 'oldest' },
+            { label: '⟫ newest', value: 'newest' },
+          ].map(({ label, value }) => {
+            const active = facing === value;
+            return (
+              <button key={value} onClick={() => setFacing(value)} style={{
+                background: active ? 'rgba(0,255,140,0.1)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${active ? 'rgba(0,255,140,0.5)' : 'rgba(255,255,255,0.12)'}`,
+                borderRadius: 2,
+                color: active ? '#00ff8c' : 'rgba(255,255,255,0.35)',
+                fontFamily: 'inherit', fontSize: 10, padding: '4px 10px',
+                cursor: 'pointer', letterSpacing: '0.05em',
+                transition: 'all 0.15s',
+              }}>{label}</button>
+            );
+          })}
+        </div>
       </div>
 
       <Canvas
-        camera={{ position: [0, 4, 10], fov: 60 }}
+        camera={{ position: [0, 10, 7], fov: 55 }}
         style={{ position: 'absolute', inset: 0 }}
         onPointerMissed={() => setSelected(null)}
       >
@@ -218,6 +239,7 @@ export default function GraphView({ data, onBack }) {
           targetPosition={currentCommit?.position}
           orbitMode={orbitMode}
           orbitControlsRef={orbitRef}
+          facing={facing}
         />
 
         <OrbitControls

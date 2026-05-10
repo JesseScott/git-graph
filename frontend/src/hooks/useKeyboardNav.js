@@ -12,9 +12,11 @@ import { useState, useEffect, useCallback } from 'react';
  *
  * Returns { currentIndex, orbitMode, setCurrentIndex, setOrbitMode }
  */
-export function useKeyboardNav(commits) {
-  // Start at the most recent commit (index 0 after sorting newest-first)
-  const [currentIndex, setCurrentIndex] = useState(0);
+export function useKeyboardNav(commits, initialIndex = null) {
+  // Default to oldest commit (last index, since commits are sorted newest-first)
+  const [currentIndex, setCurrentIndex] = useState(() =>
+    initialIndex !== null ? initialIndex : (commits.length > 0 ? commits.length - 1 : 0)
+  );
   const [orbitMode, setOrbitMode] = useState(false);
 
   const step = useCallback((direction) => {
