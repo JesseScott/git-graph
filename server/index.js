@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readdirSync, unlinkSync } from 'fs';
 import { join, basename } from 'path';
 
 const app = express();
@@ -93,6 +93,11 @@ app.post('/export', (req, res) => {
     const filename = `gitgraph_${repoName}_${timestamp}.json`;
     const outputPath = join(OUTPUT_DIR, filename);
 
+    // Remove any previous exports for the same repo
+    readdirSync(OUTPUT_DIR)
+      .filter(f => f.startsWith(`gitgraph_${repoName}_`) && f.endsWith('.json'))
+      .forEach(f => unlinkSync(join(OUTPUT_DIR, f)));
+
     const output = {
       repoName,
       repoPath,
@@ -122,6 +127,18 @@ app.get('/exports', (req, res) => {
     .sort()
     .reverse(); // newest first
   res.json(files);
+});
+
+// DELETE /exports/:filename
+app.delete('/exports/:filename', (req, res) => {
+  const filename = req.params.filename;
+  if (!filename.endsWith('.json') || filename.includes('/') || filename.includes('..')) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+  const filePath = join(OUTPUT_DIR, filename);
+  if (!existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+  unlinkSync(filePath);
+  res.json({ deleted: filename });
 });
 
 app.listen(PORT, () => {

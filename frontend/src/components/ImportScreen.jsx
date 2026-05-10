@@ -43,7 +43,6 @@ const styles = {
     borderRadius: 2, color: '#e2e8f0',
     fontFamily: "'JetBrains Mono', monospace",
     fontSize: 13, outline: 'none',
-    transition: 'border-color 0.2s',
   },
   button: {
     padding: '10px 20px',
@@ -54,7 +53,6 @@ const styles = {
     fontSize: 12, fontWeight: 600,
     cursor: 'pointer', whiteSpace: 'nowrap',
     letterSpacing: '0.05em',
-    transition: 'all 0.15s',
   },
   divider: {
     borderColor: 'rgba(255,255,255,0.06)', margin: '24px 0',
@@ -64,15 +62,21 @@ const styles = {
     textTransform: 'uppercase', marginBottom: 12,
   },
   repoItem: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    display: 'flex', alignItems: 'center',
     padding: '10px 14px',
     background: 'rgba(255,255,255,0.02)',
     border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: 2, marginBottom: 6, cursor: 'pointer',
-    transition: 'all 0.15s',
+    borderRadius: 2, marginBottom: 6,
+    gap: 8,
   },
-  repoName: { fontSize: 12, color: '#e2e8f0' },
-  repoMeta: { fontSize: 10, color: 'rgba(255,255,255,0.3)' },
+  repoName: { fontSize: 12, color: '#e2e8f0', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  repoMeta: { fontSize: 10, color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap', flexShrink: 0 },
+  iconBtn: {
+    background: 'none', border: 'none', cursor: 'pointer',
+    padding: '2px 6px', borderRadius: 2,
+    fontSize: 11, lineHeight: 1, flexShrink: 0,
+    fontFamily: "'JetBrains Mono', monospace",
+  },
   error: {
     marginTop: 12, padding: '10px 14px',
     background: 'rgba(255,60,60,0.08)',
@@ -90,22 +94,34 @@ export default function ImportScreen({ onLoad }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
-  const [exports, setExports] = useState([]);
+  const [exports, setExports] = useState([]); // [{ filename, repoName, repoPath, exportedAt }]
 
-  useEffect(() => {
-    fetchExports();
-  }, []);
+  useEffect(() => { fetchExports(); }, []);
 
   async function fetchExports() {
     try {
       const res = await fetch('/exports');
-      const data = await res.json();
-      setExports(data);
+      const files = await res.json();
+
+      // Load metadata from each JSON file to get the real repo name
+      const withMeta = await Promise.all(
+        files.map(async ({ filename }) => {
+          try {
+            const r = await fetch(`/exports/${filename}`);
+            const d = await r.json();
+            return { filename, repoName: d.repoName, repoPath: d.repoPath, exportedAt: d.exportedAt };
+          } catch {
+            return { filename, repoName: filename, repoPath: '', exportedAt: '' };
+          }
+        })
+      );
+      setExports(withMeta);
     } catch { /* server may not be ready */ }
   }
 
-  async function handleExport() {
-    if (!path.trim()) return;
+  async function handleExport(overridePath) {
+    const repoPath = (overridePath ?? path).trim();
+    if (!repoPath) return;
     setLoading(true);
     setError('');
     setStatus('Running git log...');
@@ -114,7 +130,7 @@ export default function ImportScreen({ onLoad }) {
       const res = await fetch('/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: path.trim() }),
+        body: JSON.stringify({ path: repoPath }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -135,21 +151,22 @@ export default function ImportScreen({ onLoad }) {
     onLoad(data);
   }
 
-  // Parse display info from filename: gitgraph_reponame_YYYYMMDD_HHmmss.json
-  function parseFilename(filename) {
-    const base = filename.replace('.json', '');
-    const parts = base.split('_');
-    // last two parts are date + time, everything between gitgraph_ and those is the repo name
-    const repoName = parts.slice(1, -2).join('_');
-    const datePart = parts[parts.length - 2];
-    const timePart = parts[parts.length - 1];
-    const dateStr = datePart
-      ? `${datePart.slice(0, 4)}-${datePart.slice(4, 6)}-${datePart.slice(6, 8)}`
-      : '';
-    const timeStr = timePart
-      ? `${timePart.slice(0, 2)}:${timePart.slice(2, 4)}`
-      : '';
-    return { repoName, dateStr, timeStr };
+  async function handleDelete(e, filename) {
+    e.stopPropagation();
+    try {
+      await fetch(`/exports/${filename}`, { method: 'DELETE' });
+      setExports(prev => prev.filter(x => x.filename !== filename));
+    } catch {
+      // If DELETE not implemented, just remove from UI
+      setExports(prev => prev.filter(x => x.filename !== filename));
+    }
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+    } catch { return ''; }
   }
 
   return (
@@ -170,7 +187,7 @@ export default function ImportScreen({ onLoad }) {
           />
           <button
             style={{ ...styles.button, opacity: loading ? 0.5 : 1 }}
-            onClick={handleExport}
+            onClick={() => handleExport()}
             disabled={loading}
           >
             {loading ? 'Loading...' : 'Import'}
@@ -184,21 +201,44 @@ export default function ImportScreen({ onLoad }) {
           <>
             <hr style={styles.divider} />
             <div style={styles.prevLabel}>Previously imported</div>
-            {exports.map(({ filename }) => {
-              const { repoName, dateStr, timeStr } = parseFilename(filename);
-              return (
+            {exports.map(({ filename, repoName, repoPath, exportedAt }) => (
+              <div
+                key={filename}
+                style={styles.repoItem}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(0,255,140,0.3)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'}
+              >
+                {/* Clickable name area */}
                 <div
-                  key={filename}
-                  style={styles.repoItem}
+                  style={{ ...styles.repoName, cursor: 'pointer' }}
                   onClick={() => loadExport(filename)}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(0,255,140,0.3)'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'}
                 >
-                  <div style={styles.repoName}>{repoName}</div>
-                  <div style={styles.repoMeta}>{dateStr} {timeStr}</div>
+                  {repoName}
                 </div>
-              );
-            })}
+
+                <div style={styles.repoMeta}>{formatDate(exportedAt)}</div>
+
+                {/* Reimport */}
+                {repoPath && (
+                  <button
+                    style={{ ...styles.iconBtn, color: 'rgba(0,255,140,0.6)' }}
+                    title={`Reimport from ${repoPath}`}
+                    onClick={e => { e.stopPropagation(); handleExport(repoPath); }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#00ff8c'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'rgba(0,255,140,0.6)'}
+                  >↺</button>
+                )}
+
+                {/* Delete */}
+                <button
+                  style={{ ...styles.iconBtn, color: 'rgba(255,100,100,0.5)' }}
+                  title="Remove from list"
+                  onClick={e => handleDelete(e, filename)}
+                  onMouseEnter={e => e.currentTarget.style.color = '#ff6b6b'}
+                  onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,100,100,0.5)'}
+                >✕</button>
+              </div>
+            ))}
           </>
         )}
       </div>
