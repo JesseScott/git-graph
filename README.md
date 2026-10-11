@@ -2,7 +2,7 @@
 
 A local 3D visualizer for Git repositories. Walk through commit history in 3D, explore branches spatially, and inspect commits as you go. Built with React Three Fiber + Express.
 
-[!gif](docs/git-graph%20walk%20through.gif)
+![GitGraph walkthrough](docs/git-graph%20walk%20through.gif)
 
 ## Setup
 
@@ -66,9 +66,10 @@ gitgraph/
 │       ├── hooks/
 │       │   └── useKeyboardNav.js  # WASD/arrow key navigation
 │       └── utils/
-│           └── layout.js          # Branch lane assignment + 3D positioning
+│           └── layout.js          # Topological ordering, lane packing, 3D positioning
 └── server/            # Express — runs git, writes JSON exports
-    ├── index.js
+    ├── index.js           # HTTP routes
+    ├── git.js             # git log / for-each-ref wrappers and parsers
     └── exports/       # JSON snapshots, one per repo (auto-created)
 ```
 
@@ -93,3 +94,11 @@ Express server (:3001)
         ├── Z axis = time (configurable direction)
         └── CameraRig lerps camera to current commit, swoops on direction flip
 ```
+
+## Tests
+
+```bash
+npm test
+```
+
+Runs the Node built-in test runner for the server (git parsing) and the frontend (layout).
