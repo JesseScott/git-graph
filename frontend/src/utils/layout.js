@@ -7,9 +7,10 @@
  *
  * Lane assignment:
  *   1. Start from branch tip commits (those with refs, or merge targets)
- *   2. Walk each branch backwards through parents, assigning a lane
- *   3. When a commit already has a lane (shared history), stop walking that path
- *   4. Commits with no lane after the walk get lane 0
+ *   2. Walk each branch backwards through first parents, forming a chain
+ *   3. When a commit already belongs to a chain (shared history), stop walking
+ *   4. Pack chains into lanes, reusing a lane once its previous chain has ended
+ *   5. Commits on no chain (unreachable from any tip) get lane 0
  *
  * X positions alternate: 0, -1, +1, -2, +2, -3, +3 ...
  * so branches fan out symmetrically rather than all stacking to one side.
@@ -28,6 +29,71 @@ function laneToX(lane) {
   return side * dist;
 }
 
+/**
+ * Order commits newest → oldest, guaranteeing every commit appears before its
+ * parents even when committer clocks are skewed (Kahn's algorithm, picking the
+ * newest available commit first).
+ */
+export function topoSort(commits) {
+  const byHash = new Map(commits.map(c => [c.hash, c]));
+  const pending = new Map(); // hash -> number of unplaced children
+  commits.forEach(c => pending.set(c.hash, 0));
+  commits.forEach(c => {
+    c.parents.forEach(p => {
+      if (pending.has(p)) pending.set(p, pending.get(p) + 1);
+    });
+  });
+
+  // Binary max-heap on timestamp (ties broken by input order for stability).
+  const order = new Map(commits.map((c, i) => [c.hash, i]));
+  const heap = [];
+  const before = (a, b) =>
+    a.timestamp !== b.timestamp ? a.timestamp > b.timestamp : order.get(a.hash) < order.get(b.hash);
+  const push = (c) => {
+    heap.push(c);
+    let i = heap.length - 1;
+    while (i > 0) {
+      const up = (i - 1) >> 1;
+      if (!before(heap[i], heap[up])) break;
+      [heap[i], heap[up]] = [heap[up], heap[i]];
+      i = up;
+    }
+  };
+  const pop = () => {
+    const top = heap[0];
+    const last = heap.pop();
+    if (heap.length > 0) {
+      heap[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < heap.length && before(heap[l], heap[m])) m = l;
+        if (r < heap.length && before(heap[r], heap[m])) m = r;
+        if (m === i) break;
+        [heap[i], heap[m]] = [heap[m], heap[i]];
+        i = m;
+      }
+    }
+    return top;
+  };
+
+  commits.forEach(c => { if (pending.get(c.hash) === 0) push(c); });
+
+  const sorted = [];
+  while (heap.length > 0) {
+    const c = pop();
+    sorted.push(c);
+    c.parents.forEach(p => {
+      if (!byHash.has(p)) return;
+      const n = pending.get(p) - 1;
+      pending.set(p, n);
+      if (n === 0) push(byHash.get(p));
+    });
+  }
+  return sorted;
+}
+
 export function layoutCommits(commits) {
   if (!commits || commits.length === 0) return [];
 
@@ -42,13 +108,10 @@ export function layoutCommits(commits) {
     });
   });
 
-  const sorted = [...commits].sort((a, b) => b.timestamp - a.timestamp);
+  const sorted = topoSort(commits);
 
   const zIndexMap = {};
   sorted.forEach((c, i) => { zIndexMap[c.hash] = i; });
-
-  const laneMap = {};
-  let nextLane = 0;
 
   const refPriority = (commit) => {
     if (!commit.refs || commit.refs.length === 0) return 99;
@@ -56,41 +119,46 @@ export function layoutCommits(commits) {
     return 1;
   };
 
+  // Branch tips: anything with a ref, plus parents of merges (merged-and-deleted branches).
+  const tipSet = new Set();
   const tips = sorted
     .filter(c => c.refs && c.refs.length > 0)
-    .sort((a, b) => refPriority(a) - refPriority(b));
-
-  // Also catch branches that were merged and deleted
+    .sort((a, b) => refPriority(a) - refPriority(b)); // stable: keeps newest-first within a priority
+  tips.forEach(t => tipSet.add(t.hash));
   sorted.forEach(c => {
-    const childList = children[c.hash] || [];
-    const mergeChildren = childList.filter(ch => byHash[ch]?.parents.length > 1);
-    if (mergeChildren.length > 0 && !tips.find(t => t.hash === c.hash)) {
+    const hasMergeChild = (children[c.hash] || []).some(ch => byHash[ch]?.parents.length > 1);
+    if (hasMergeChild && !tipSet.has(c.hash)) {
+      tipSet.add(c.hash);
       tips.push(c);
     }
   });
 
-  function traceBranch(startHash, lane) {
-    const queue = [startHash];
-    while (queue.length > 0) {
-      const hash = queue.shift();
-      if (laneMap[hash] !== undefined) continue;
-      laneMap[hash] = lane;
-      const commit = byHash[hash];
-      if (!commit) continue;
-      if (commit.parents.length > 0) {
-        queue.push(commit.parents[0]);
-      }
-    }
-  }
-
+  // Walk each tip down its first-parent chain until reaching an already-claimed commit.
+  const claimed = new Set();
+  const chains = [];
   tips.forEach(tip => {
-    if (laneMap[tip.hash] === undefined) {
-      traceBranch(tip.hash, nextLane++);
+    if (claimed.has(tip.hash)) return;
+    const chain = [];
+    let hash = tip.hash;
+    while (hash && byHash[hash] && !claimed.has(hash)) {
+      claimed.add(hash);
+      chain.push(hash);
+      hash = byHash[hash].parents[0];
     }
+    chains.push(chain);
   });
 
-  sorted.forEach(c => {
-    if (laneMap[c.hash] === undefined) laneMap[c.hash] = 0;
+  // Pack chains into lanes: a lane is reused once the branch occupying it has ended,
+  // so lane count tracks concurrent branches rather than total branches.
+  const laneMap = {};
+  const laneEnds = []; // laneEnds[lane] = zIndex of the oldest commit currently in that lane
+  chains.forEach(chain => {
+    const first = zIndexMap[chain[0]];
+    const last = zIndexMap[chain[chain.length - 1]];
+    let lane = laneEnds.findIndex(end => end < first);
+    if (lane === -1) lane = laneEnds.length;
+    laneEnds[lane] = last;
+    chain.forEach(h => { laneMap[h] = lane; });
   });
 
   return sorted.map(commit => {

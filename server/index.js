@@ -1,24 +1,24 @@
 import express from 'express';
 import cors from 'cors';
-import { execSync } from 'child_process';
 import { existsSync, mkdirSync, writeFileSync, readdirSync, unlinkSync } from 'fs';
-import { join, basename } from 'path';
+import { join, basename, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { normalizeRepoPath, isGitRepo, readRepo } from './git.js';
 
 const app = express();
 const PORT = 3001;
-const OUTPUT_DIR = join(process.cwd(), 'exports');
+const OUTPUT_DIR = join(dirname(fileURLToPath(import.meta.url)), 'exports');
 
 app.use(cors());
 app.use(express.json());
 app.use('/exports', express.static(OUTPUT_DIR));
 
 // Ensure exports directory exists
-if (!existsSync(OUTPUT_DIR)) mkdirSync(OUTPUT_DIR);
+if (!existsSync(OUTPUT_DIR)) mkdirSync(OUTPUT_DIR, { recursive: true });
 
 // POST /export  { path: "/path/to/repo" }
-app.post('/export', (req, res) => {
-  // Trim whitespace and surrounding quotes (Windows "Copy as Path" wraps in double quotes)
-  const repoPath = req.body.path?.trim().replace(/^["']+|["']+$/g, '').replace(/\\/g, '/');
+app.post('/export', async (req, res) => {
+  const repoPath = normalizeRepoPath(req.body?.path);
 
   if (!repoPath) {
     return res.status(400).json({ error: 'No path provided' });
@@ -28,69 +28,16 @@ app.post('/export', (req, res) => {
     return res.status(400).json({ error: `Path does not exist: ${repoPath}` });
   }
 
-  // Check it's actually a git repo
-  try {
-    execSync('git rev-parse --is-inside-work-tree', { cwd: repoPath, stdio: 'pipe' });
-  } catch {
+  if (!(await isGitRepo(repoPath))) {
     return res.status(400).json({ error: 'Not a git repository' });
   }
 
   try {
-    // Use a safe delimiter-based format instead of JSON templates to avoid shell quoting issues.
-    // Each commit is one line: HASH|SHORTHASH|TIMESTAMP|PARENTS|AUTHOR|EMAIL|MESSAGE
-    // Message is last so any pipe chars in it don't break earlier fields.
-    const SEP = '\x1f'; // ASCII unit separator — never appears in git output
-    const logOutput = execSync(
-      `git log --all --pretty=format:"%H${SEP}%h${SEP}%ct${SEP}%P${SEP}%an${SEP}%ae${SEP}%s"`,
-      { cwd: repoPath, stdio: 'pipe' }
-    ).toString().trim();
-
-    // Get branch/ref info using safe delimiters too
-    const refsOutput = execSync(
-      `git for-each-ref --format="%(refname:short)${SEP}%(objectname)${SEP}%(refname)" refs/heads refs/remotes refs/tags`,
-      { cwd: repoPath, stdio: 'pipe' }
-    ).toString().trim();
-
-    // Parse commits
-    const commits = logOutput
-      .split('\n')
-      .filter(Boolean)
-      .map(line => {
-        const [hash, shortHash, timestamp, parentsRaw, author, email, ...msgParts] = line.split(SEP);
-        return {
-          hash,
-          shortHash,
-          timestamp: parseInt(timestamp, 10),
-          parents: parentsRaw ? parentsRaw.split(' ').filter(Boolean) : [],
-          author,
-          email,
-          message: msgParts.join(SEP), // rejoin in case message contained SEP (extremely unlikely but safe)
-        };
-      });
-
-    // Parse refs
-    const refs = refsOutput
-      .split('\n')
-      .filter(Boolean)
-      .map(line => {
-        const [name, hash, type] = line.split(SEP);
-        return { name, hash, type };
-      });
-
-    // Tag each commit with its branch names
-    const hashToRefs = {};
-    refs.forEach(ref => {
-      if (!hashToRefs[ref.hash]) hashToRefs[ref.hash] = [];
-      hashToRefs[ref.hash].push(ref.name);
-    });
-
-    commits.forEach(commit => {
-      commit.refs = hashToRefs[commit.hash] || [];
-    });
+    const { commits, refs } = await readRepo(repoPath);
 
     const repoName = basename(repoPath).replace(/[^a-zA-Z0-9-_]/g, '_');
-    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15);
-    const filename = `gitgraph_${repoName}_${timestamp}.json`;
+    const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    const filename = `gitgraph_${repoName}_${stamp}.json`;
     const outputPath = join(OUTPUT_DIR, filename);
 
     // Remove any previous exports for the same repo
@@ -107,7 +54,7 @@ app.post('/export', (req, res) => {
       refs,
     };
 
-    writeFileSync(outputPath, JSON.stringify(output, null, 2));
+    writeFileSync(outputPath, JSON.stringify(output));
 
     res.json({ filename, commitCount: commits.length, repoName });
   } catch (err) {
@@ -120,10 +67,7 @@ app.post('/export', (req, res) => {
 app.get('/exports', (req, res) => {
   const files = readdirSync(OUTPUT_DIR)
     .filter(f => f.endsWith('.json'))
-    .map(filename => {
-      const parts = filename.replace('.json', '').split('_');
-      return { filename, display: filename };
-    })
+    .map(filename => ({ filename, display: filename }))
     .sort()
     .reverse(); // newest first
   res.json(files);
