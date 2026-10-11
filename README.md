@@ -20,38 +20,42 @@ Then open **http://localhost:5173** in your browser.
 
 1. Paste the absolute path to any local git repo (e.g. `/Users/you/projects/my-app`)
    - Windows "Copy as Path" format (`"C:\Users\you\project"`) is supported
-2. Click **Import** — the server runs `git log` and exports a JSON snapshot
-3. The 3D graph loads automatically
-4. Previously imported repos appear below the input for quick re-loading
+2. Optionally set **Max commits** (newest first) to keep huge repos responsive
+3. Click **Import** — the server runs `git log` and exports a JSON snapshot
+4. The 3D graph loads automatically
+5. Previously imported repos appear below the input for quick re-loading
    - **↺** re-imports from the original path (syncs latest commits)
    - **✕** removes the entry
 
 ## Controls
 
 ### Walk mode (default)
-| Action | Keys |
-|---|---|
-| Move forward (towards older/newer commits) | `↑` or `W` |
-| Move back | `↓` or `S` |
-| Switch branch lane | `←` `→` or `A` `D` |
-| Toggle free orbit | `O` |
+
+| Action                                     | Keys               |
+| ------------------------------------------ | ------------------ |
+| Move forward (towards older/newer commits) | `↑` or `W`         |
+| Move back                                  | `↓` or `S`         |
+| Switch branch lane                         | `←` `→` or `A` `D` |
+| Toggle free orbit                          | `O`                |
 
 Keys automatically flip direction based on whether you're walking from **oldest → newest** or **newest → oldest** (toggle in the top bar).
 
 ### Orbit mode (`O` to toggle)
-| Action | How |
-|---|---|
-| Rotate | Click + drag |
-| Zoom | Scroll wheel |
-| Pan | Right-click + drag |
+
+| Action | How                |
+| ------ | ------------------ |
+| Rotate | Click + drag       |
+| Zoom   | Scroll wheel       |
+| Pan    | Right-click + drag |
 
 ### General
-| Action | How |
-|---|---|
-| Inspect a commit | Click a node (shows detail panel bottom-left) |
-| Jump to oldest commit | `⟪ oldest` button in top bar |
-| Jump to newest commit | `⟫ newest` button in top bar |
-| Deselect | Click empty space |
+
+| Action                | How                                           |
+| --------------------- | --------------------------------------------- |
+| Inspect a commit      | Click a node (shows detail panel bottom-left) |
+| Jump to oldest commit | `⟪ oldest` button in top bar                  |
+| Jump to newest commit | `⟫ newest` button in top bar                  |
+| Deselect              | Click empty space                             |
 
 ## Project structure
 
@@ -94,6 +98,16 @@ Express server (:3001)
         ├── Z axis = time (configurable direction)
         └── CameraRig lerps camera to current commit, swoops on direction flip
 ```
+
+## Development
+
+```bash
+npm run lint          # ESLint
+npm run format        # Prettier (write)
+npm run format:check  # Prettier (check, used in CI)
+```
+
+The API server binds to `127.0.0.1` only and accepts requests from the dev UI origin.
 
 ## Tests
 

@@ -15,48 +15,51 @@ import { useState, useEffect, useCallback } from 'react';
 export function useKeyboardNav(commits, initialIndex = null) {
   // Default to oldest commit (last index, since commits are sorted newest-first)
   const [currentIndex, setCurrentIndex] = useState(() =>
-    initialIndex !== null ? initialIndex : (commits.length > 0 ? commits.length - 1 : 0)
+    initialIndex !== null ? initialIndex : commits.length > 0 ? commits.length - 1 : 0,
   );
   const [orbitMode, setOrbitMode] = useState(false);
 
-  const step = useCallback((direction) => {
-    if (!commits.length) return;
+  const step = useCallback(
+    (direction) => {
+      if (!commits.length) return;
 
-    setCurrentIndex(prev => {
-      const current = commits[prev];
+      setCurrentIndex((prev) => {
+        const current = commits[prev];
 
-      if (direction === 'forward') {
-        // Move towards newer commits (lower index)
-        return Math.max(0, prev - 1);
-      }
+        if (direction === 'forward') {
+          // Move towards newer commits (lower index)
+          return Math.max(0, prev - 1);
+        }
 
-      if (direction === 'back') {
-        // Move towards older commits (higher index)
-        return Math.min(commits.length - 1, prev + 1);
-      }
+        if (direction === 'back') {
+          // Move towards older commits (higher index)
+          return Math.min(commits.length - 1, prev + 1);
+        }
 
-      if (direction === 'left' || direction === 'right') {
-        const currentLane = current.lane;
-        const targetLane = direction === 'left' ? currentLane - 1 : currentLane + 1;
+        if (direction === 'left' || direction === 'right') {
+          const currentLane = current.lane;
+          const targetLane = direction === 'left' ? currentLane - 1 : currentLane + 1;
 
-        // Find the closest commit in the target lane by zIndex proximity
-        const candidates = commits
-          .map((c, i) => ({ ...c, i }))
-          .filter(c => c.lane === targetLane);
+          // Find the closest commit in the target lane by zIndex proximity
+          const candidates = commits
+            .map((c, i) => ({ ...c, i }))
+            .filter((c) => c.lane === targetLane);
 
-        if (!candidates.length) return prev; // no lane in that direction
+          if (!candidates.length) return prev; // no lane in that direction
 
-        // Pick the candidate closest in zIndex (time) to current
-        const closest = candidates.reduce((best, c) =>
-          Math.abs(c.zIndex - current.zIndex) < Math.abs(best.zIndex - current.zIndex) ? c : best
-        );
+          // Pick the candidate closest in zIndex (time) to current
+          const closest = candidates.reduce((best, c) =>
+            Math.abs(c.zIndex - current.zIndex) < Math.abs(best.zIndex - current.zIndex) ? c : best,
+          );
 
-        return closest.i;
-      }
+          return closest.i;
+        }
 
-      return prev;
-    });
-  }, [commits]);
+        return prev;
+      });
+    },
+    [commits],
+  );
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -90,7 +93,7 @@ export function useKeyboardNav(commits, initialIndex = null) {
           break;
         case 'o':
         case 'O':
-          setOrbitMode(m => !m);
+          setOrbitMode((m) => !m);
           break;
         default:
           break;
