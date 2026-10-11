@@ -24,7 +24,7 @@ const Z_SPACING = 2.5;
  */
 function laneToX(lane) {
   if (lane === 0) return 0;
-  const side = lane % 2 === 0 ? 1 : -1;   // even = right, odd = left
+  const side = lane % 2 === 0 ? 1 : -1; // even = right, odd = left
   const dist = Math.ceil(lane / 2);
   return side * dist;
 }
@@ -35,11 +35,11 @@ function laneToX(lane) {
  * newest available commit first).
  */
 export function topoSort(commits) {
-  const byHash = new Map(commits.map(c => [c.hash, c]));
+  const byHash = new Map(commits.map((c) => [c.hash, c]));
   const pending = new Map(); // hash -> number of unplaced children
-  commits.forEach(c => pending.set(c.hash, 0));
-  commits.forEach(c => {
-    c.parents.forEach(p => {
+  commits.forEach((c) => pending.set(c.hash, 0));
+  commits.forEach((c) => {
+    c.parents.forEach((p) => {
       if (pending.has(p)) pending.set(p, pending.get(p) + 1);
     });
   });
@@ -66,7 +66,8 @@ export function topoSort(commits) {
       heap[0] = last;
       let i = 0;
       for (;;) {
-        const l = 2 * i + 1, r = l + 1;
+        const l = 2 * i + 1,
+          r = l + 1;
         let m = i;
         if (l < heap.length && before(heap[l], heap[m])) m = l;
         if (r < heap.length && before(heap[r], heap[m])) m = r;
@@ -78,13 +79,15 @@ export function topoSort(commits) {
     return top;
   };
 
-  commits.forEach(c => { if (pending.get(c.hash) === 0) push(c); });
+  commits.forEach((c) => {
+    if (pending.get(c.hash) === 0) push(c);
+  });
 
   const sorted = [];
   while (heap.length > 0) {
     const c = pop();
     sorted.push(c);
-    c.parents.forEach(p => {
+    c.parents.forEach((p) => {
       if (!byHash.has(p)) return;
       const n = pending.get(p) - 1;
       pending.set(p, n);
@@ -98,11 +101,13 @@ export function layoutCommits(commits) {
   if (!commits || commits.length === 0) return [];
 
   const byHash = {};
-  commits.forEach(c => { byHash[c.hash] = c; });
+  commits.forEach((c) => {
+    byHash[c.hash] = c;
+  });
 
   const children = {};
-  commits.forEach(c => {
-    c.parents.forEach(p => {
+  commits.forEach((c) => {
+    c.parents.forEach((p) => {
       if (!children[p]) children[p] = [];
       children[p].push(c.hash);
     });
@@ -111,22 +116,24 @@ export function layoutCommits(commits) {
   const sorted = topoSort(commits);
 
   const zIndexMap = {};
-  sorted.forEach((c, i) => { zIndexMap[c.hash] = i; });
+  sorted.forEach((c, i) => {
+    zIndexMap[c.hash] = i;
+  });
 
   const refPriority = (commit) => {
     if (!commit.refs || commit.refs.length === 0) return 99;
-    if (commit.refs.some(r => r === 'HEAD' || r === 'main' || r === 'master')) return 0;
+    if (commit.refs.some((r) => r === 'HEAD' || r === 'main' || r === 'master')) return 0;
     return 1;
   };
 
   // Branch tips: anything with a ref, plus parents of merges (merged-and-deleted branches).
   const tipSet = new Set();
   const tips = sorted
-    .filter(c => c.refs && c.refs.length > 0)
+    .filter((c) => c.refs && c.refs.length > 0)
     .sort((a, b) => refPriority(a) - refPriority(b)); // stable: keeps newest-first within a priority
-  tips.forEach(t => tipSet.add(t.hash));
-  sorted.forEach(c => {
-    const hasMergeChild = (children[c.hash] || []).some(ch => byHash[ch]?.parents.length > 1);
+  tips.forEach((t) => tipSet.add(t.hash));
+  sorted.forEach((c) => {
+    const hasMergeChild = (children[c.hash] || []).some((ch) => byHash[ch]?.parents.length > 1);
     if (hasMergeChild && !tipSet.has(c.hash)) {
       tipSet.add(c.hash);
       tips.push(c);
@@ -136,7 +143,7 @@ export function layoutCommits(commits) {
   // Walk each tip down its first-parent chain until reaching an already-claimed commit.
   const claimed = new Set();
   const chains = [];
-  tips.forEach(tip => {
+  tips.forEach((tip) => {
     if (claimed.has(tip.hash)) return;
     const chain = [];
     let hash = tip.hash;
@@ -152,16 +159,18 @@ export function layoutCommits(commits) {
   // so lane count tracks concurrent branches rather than total branches.
   const laneMap = {};
   const laneEnds = []; // laneEnds[lane] = zIndex of the oldest commit currently in that lane
-  chains.forEach(chain => {
+  chains.forEach((chain) => {
     const first = zIndexMap[chain[0]];
     const last = zIndexMap[chain[chain.length - 1]];
-    let lane = laneEnds.findIndex(end => end < first);
+    let lane = laneEnds.findIndex((end) => end < first);
     if (lane === -1) lane = laneEnds.length;
     laneEnds[lane] = last;
-    chain.forEach(h => { laneMap[h] = lane; });
+    chain.forEach((h) => {
+      laneMap[h] = lane;
+    });
   });
 
-  return sorted.map(commit => {
+  return sorted.map((commit) => {
     const lane = laneMap[commit.hash] ?? 0;
     const x = laneToX(lane) * LANE_SPACING;
     const z = -zIndexMap[commit.hash] * Z_SPACING;
@@ -176,11 +185,13 @@ export function layoutCommits(commits) {
 
 export function buildEdges(positionedCommits) {
   const byHash = {};
-  positionedCommits.forEach(c => { byHash[c.hash] = c; });
+  positionedCommits.forEach((c) => {
+    byHash[c.hash] = c;
+  });
 
   const edges = [];
-  positionedCommits.forEach(commit => {
-    commit.parents.forEach(parentHash => {
+  positionedCommits.forEach((commit) => {
+    commit.parents.forEach((parentHash) => {
       const parent = byHash[parentHash];
       if (parent) {
         edges.push({
@@ -199,8 +210,14 @@ export function buildEdges(positionedCommits) {
 export function branchColor(refName) {
   if (!refName) return '#4a9eff';
   const palette = [
-    '#00ff8c', '#4a9eff', '#ff6b9d', '#ffd93d',
-    '#c77dff', '#ff8c42', '#06d6a0', '#ef476f',
+    '#00ff8c',
+    '#4a9eff',
+    '#ff6b9d',
+    '#ffd93d',
+    '#c77dff',
+    '#ff8c42',
+    '#06d6a0',
+    '#ef476f',
   ];
   let hash = 0;
   for (let i = 0; i < refName.length; i++) {

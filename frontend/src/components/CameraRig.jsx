@@ -27,7 +27,7 @@ export function CameraRig({ targetPosition, orbitMode, orbitControlsRef, facing 
   const swoopActive = useRef(false);
   const swoopProgress = useRef(0);
   const swoopFrom = useRef(new THREE.Vector3());
-  const swoopMid = useRef(new THREE.Vector3());   // apex of arc
+  const swoopMid = useRef(new THREE.Vector3()); // apex of arc
   const swoopTo = useRef(new THREE.Vector3());
   const swoopLook = useRef(new THREE.Vector3());
 

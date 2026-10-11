@@ -7,18 +7,27 @@ const c = (hash, timestamp, parents = [], refs = []) => ({ hash, timestamp, pare
 test('topoSort puts children before parents despite clock skew', () => {
   // child "b" has an OLDER timestamp than its parent "a"
   const sorted = topoSort([c('a', 100), c('b', 50, ['a'])]);
-  assert.deepEqual(sorted.map(x => x.hash), ['b', 'a']);
+  assert.deepEqual(
+    sorted.map((x) => x.hash),
+    ['b', 'a'],
+  );
 });
 
 test('topoSort is newest-first for independent commits', () => {
   const sorted = topoSort([c('x', 1), c('y', 3), c('z', 2)]);
-  assert.deepEqual(sorted.map(x => x.hash), ['y', 'z', 'x']);
+  assert.deepEqual(
+    sorted.map((x) => x.hash),
+    ['y', 'z', 'x'],
+  );
 });
 
 test('linear history lives in lane 0 with strictly decreasing z', () => {
   const out = layoutCommits([c('3', 3, ['2'], ['main']), c('2', 2, ['1']), c('1', 1)]);
-  assert.ok(out.every(x => x.lane === 0));
-  assert.deepEqual(out.map(x => x.zIndex), [0, 1, 2]);
+  assert.ok(out.every((x) => x.lane === 0));
+  assert.deepEqual(
+    out.map((x) => x.zIndex),
+    [0, 1, 2],
+  );
   assert.ok(out[0].position[2] > out[1].position[2]);
 });
 
@@ -29,7 +38,7 @@ test('concurrent branches get different lanes; main gets lane 0', () => {
     c('f1', 3, ['m1']),
     c('m1', 2),
   ]);
-  const lane = Object.fromEntries(out.map(x => [x.hash, x.lane]));
+  const lane = Object.fromEntries(out.map((x) => [x.hash, x.lane]));
   assert.equal(lane.m2, 0);
   assert.notEqual(lane.f2, lane.m2);
   assert.equal(lane.f1, lane.f2);
@@ -45,9 +54,9 @@ test('lanes are reused once a branch has ended', () => {
     c('m2', 5, ['m1']),
     c('m1', 1),
   ]);
-  const lane = Object.fromEntries(out.map(x => [x.hash, x.lane]));
+  const lane = Object.fromEntries(out.map((x) => [x.hash, x.lane]));
   assert.equal(lane.s1, lane.s2);
-  assert.equal(Math.max(...out.map(x => x.lane)), 1);
+  assert.equal(Math.max(...out.map((x) => x.lane)), 1);
 });
 
 test('merged-and-deleted branches still get their own lane', () => {
@@ -57,7 +66,7 @@ test('merged-and-deleted branches still get their own lane', () => {
     c('m1', 3, ['m0']),
     c('m0', 1),
   ]);
-  const lane = Object.fromEntries(out.map(x => [x.hash, x.lane]));
+  const lane = Object.fromEntries(out.map((x) => [x.hash, x.lane]));
   assert.notEqual(lane.f1, lane.m1);
 });
 
@@ -67,10 +76,7 @@ test('empty input and dangling parents are handled', () => {
 });
 
 test('buildEdges marks merge edges and skips missing parents', () => {
-  const edges = buildEdges(layoutCommits([
-    c('m', 3, ['a', 'gone'], ['main']),
-    c('a', 1),
-  ]));
+  const edges = buildEdges(layoutCommits([c('m', 3, ['a', 'gone'], ['main']), c('a', 1)]));
   assert.equal(edges.length, 1);
   assert.equal(edges[0].isMerge, true);
 });

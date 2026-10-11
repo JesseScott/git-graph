@@ -4,7 +4,17 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { SEP, normalizeRepoPath, parseCommits, parseRefs, attachRefs, readRepo, isGitRepo } from '../git.js';
+import {
+  SEP,
+  normalizeRepoPath,
+  parseCommits,
+  parseRefs,
+  attachRefs,
+  readRepo,
+  isGitRepo,
+  parseLimit,
+  isValidExportName,
+} from '../git.js';
 
 test('normalizeRepoPath strips quotes and converts backslashes', () => {
   assert.equal(normalizeRepoPath('  "C:\\Users\\me\\proj"  '), 'C:/Users/me/proj');
@@ -48,7 +58,7 @@ test('readRepo works against a real repository', async () => {
     assert.equal(commits.length, 1);
     assert.equal(commits[0].message, 'first | commit');
     assert.ok(commits[0].refs.includes('main'));
-    assert.ok(refs.some(r => r.name === 'v1'));
+    assert.ok(refs.some((r) => r.name === 'v1'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -58,6 +68,35 @@ test('isGitRepo is false for a plain directory', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'gg-'));
   try {
     assert.equal(await isGitRepo(dir), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('parseLimit accepts positive integers and rejects junk', () => {
+  assert.equal(parseLimit(undefined), null);
+  assert.equal(parseLimit(''), null);
+  assert.equal(parseLimit('50'), 50);
+  for (const bad of [0, -1, 1.5, 'abc', '--all']) assert.throws(() => parseLimit(bad));
+});
+
+test('isValidExportName only accepts generated export filenames', () => {
+  assert.equal(isValidExportName('gitgraph_my-repo_20261011034624.json'), true);
+  for (const bad of ['../x.json', 'a/b.json', 'package.json', 'gitgraph_x.txt', '', undefined]) {
+    assert.equal(isValidExportName(bad), false);
+  }
+});
+
+test('readRepo honours the commit limit', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gg-'));
+  try {
+    const git = (...a) => execFileSync('git', a, { cwd: dir, stdio: 'pipe' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 't@t');
+    git('config', 'user.name', 'T');
+    for (let i = 0; i < 3; i++) git('commit', '-q', '--allow-empty', '-m', `c${i}`);
+    assert.equal((await readRepo(dir)).commits.length, 3);
+    assert.equal((await readRepo(dir, { limit: 2 })).commits.length, 2);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
