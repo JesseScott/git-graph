@@ -123,7 +123,7 @@ export function CommitNodes({ commits, selectedHash, currentIndex, onClick }) {
     () => (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace(
         'vec3 totalEmissiveRadiance = emissive;',
-        'vec3 totalEmissiveRadiance = emissive * vColor;',
+        'vec3 totalEmissiveRadiance = emissive * vColor.rgb;',
       );
     },
     [],
