@@ -3,3 +3,5 @@ dist
 server/exports
 package-lock.json
 docs
+test-results
+playwright-report

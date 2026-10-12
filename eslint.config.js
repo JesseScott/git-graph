@@ -5,10 +5,24 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import prettier from 'eslint-config-prettier';
 
 export default [
-  { ignores: ['**/node_modules/**', '**/dist/**', 'server/exports/**'] },
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'server/exports/**',
+      'test-results/**',
+      'playwright-report/**',
+    ],
+  },
   js.configs.recommended,
   {
-    files: ['server/**/*.js', 'frontend/test/**/*.js', 'eslint.config.js'],
+    files: [
+      'server/**/*.js',
+      'frontend/test/**/*.js',
+      'e2e/**/*.js',
+      'eslint.config.js',
+      'playwright.config.js',
+    ],
     languageOptions: { globals: globals.node },
   },
   {

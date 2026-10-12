@@ -137,3 +137,7 @@ dist
 
 # exports
 server/exports/*
+
+# playwright
+test-results/
+playwright-report/
