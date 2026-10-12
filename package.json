@@ -12,7 +12,7 @@
     "install:all": "npm install && npm install --prefix frontend && npm install --prefix server"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "1.56.1",
     "concurrently": "^10.0.6",
     "eslint": "^9.39.5",
