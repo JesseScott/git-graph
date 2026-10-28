@@ -6,6 +6,8 @@ A local 3D visualizer for Git repositories. Walk through commit history in 3D, e
 
 ## Setup
 
+Requires **Node.js 22 or newer**.
+
 ```bash
 # 1. Install all dependencies
 npm run install:all
